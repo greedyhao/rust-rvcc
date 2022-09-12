@@ -3,7 +3,6 @@ use std::io::prelude::*;
 
 use clap::Parser;
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -40,7 +39,7 @@ mod test {
     }
 
     #[test]
-    fn test_no_args() {
+    fn test_000_return_integer() {
         use std::process::Command;
         use std::str;
 
