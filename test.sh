@@ -1,6 +1,9 @@
 #!/bin/bash
 
-riscv64-unknown-linux-gnu-gcc -static tmp.s -o tmp
-qemu-riscv64 -L $RISCV/sysroot tmp
+file="$1"
+file_suffix="$file.s"
+
+riscv64-unknown-linux-gnu-gcc -static "$file_suffix" -o "$file"
+qemu-riscv64 -L "$RISCV"/sysroot "$file"
 
 echo $?
