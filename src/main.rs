@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::io::prelude::*;
+use std::iter::Peekable;
+use std::str::Chars;
 
 use clap::Parser;
 
@@ -10,6 +12,18 @@ struct Args {
     expression: String,
 }
 
+fn iterchar2str(ch: char, iter: &mut Peekable<Chars>) -> String {
+    let mut num = ch.to_string();
+    while let Some(next_ch) = iter.peek() {
+        if next_ch >= &'0' && next_ch <= &'9' {
+            num.push(iter.next().unwrap());
+        } else {
+            break;
+        }
+    }
+    return num;
+}
+
 fn main_body(args: Args, asm_name: &str) -> Result<i32, i32> {
     let str1 = "  .global main\n";
     let str2 = "main:\n";
@@ -17,19 +31,21 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, i32> {
     let str4 = "  ret\n";
 
     // 这里我们将算式分解为 num (op num) (op num)...的形式
-    let mut iter = args.expression.chars();
+    let mut iter = args.expression.chars().peekable();
     while let Some(ch) = iter.next() {
         match ch {
             // 为num则传入a0
             '0'..='9' => {
-                str3 += &format!("  li a0, {}\n", ch);
+                let num = iterchar2str(ch, &mut iter);
+                str3 += &format!("  li a0, {}\n", num);
             }
 
             // 为+则读取下一个num做加法
             // addi rd, rs1, imm 表示 rd = rs1 + imm
             // addi中imm为有符号立即数，所以加法表示为 rd = rs1 + imm
             '+' => {
-                if let Some(num) = iter.next() {
+                if let Some(ch) = iter.next() {
+                    let num = iterchar2str(ch, &mut iter);
                     str3 += &format!("  addi a0, a0, {}\n", num);
                 } else {
                     return Err(-1);
@@ -40,7 +56,8 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, i32> {
             // addi rd, rs1, imm 表示 rd = rs1 + imm
             // addi中imm为有符号立即数，所以减法表示为 rd = rs1 + (-imm)
             '-' => {
-                if let Some(num) = iter.next() {
+                if let Some(ch) = iter.next() {
+                    let num = iterchar2str(ch, &mut iter);
                     str3 += &format!("  addi a0, a0, -{}\n", num);
                 } else {
                     return Err(-1);
@@ -107,14 +124,21 @@ mod test {
     }
 
     #[test]
-    fn test_000_0_return_integer() {
+    fn test_001_0_return_integer() {
         let asm_name = "tmp_000_0";
         let input = 1.to_string();
         test_xxx_do(input.as_str(), input.as_str(), asm_name);
     }
 
     #[test]
-    fn test_001_0_plus_and_minus() {
+    fn test_001_1_return_integer() {
+        let asm_name = "tmp_000_1";
+        let input = 123.to_string();
+        test_xxx_do(input.as_str(), input.as_str(), asm_name);
+    }
+
+    #[test]
+    fn test_002_0_plus_and_minus() {
         let asm_name = "tmp_001_0";
         let input = "1-2+3";
         let expect = 1 - 2 + 3;
@@ -122,10 +146,10 @@ mod test {
     }
 
     #[test]
-    fn test_001_1_plus_and_minus() {
-        let asm_name = "tmp_001_1";
-        let input = "1-2+3+9";
-        let expect = 1 - 2 + 3 + 9;
+    fn test_002_1_plus_and_minus() {
+        let asm_name = "tmp_001_0";
+        let input = "112-22+33";
+        let expect = 112 - 22 + 33;
         test_xxx_do(input, expect.to_string().as_str(), asm_name);
     }
 }
