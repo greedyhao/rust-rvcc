@@ -12,8 +12,8 @@ struct Args {
     expression: String,
 }
 
-fn iterchar2str(ch: char, iter: &mut Peekable<Chars>) -> String {
-    let mut num = ch.to_string();
+fn iterchar2str(start_char: char, iter: &mut Peekable<Chars>) -> String {
+    let mut num = start_char.to_string();
     while let Some(next_ch) = iter.peek() {
         if next_ch >= &'0' && next_ch <= &'9' {
             num.push(iter.next().unwrap());
@@ -21,7 +21,7 @@ fn iterchar2str(ch: char, iter: &mut Peekable<Chars>) -> String {
             break;
         }
     }
-    return num;
+    return num.trim_start().to_string();
 }
 
 fn main_body(args: Args, asm_name: &str) -> Result<i32, i32> {
@@ -63,6 +63,9 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, i32> {
                     return Err(-1);
                 }
             }
+
+            // 如果是空格就忽略掉
+            ' ' => {}
 
             _ => {
                 return Err(-1);
@@ -125,21 +128,21 @@ mod test {
 
     #[test]
     fn test_001_0_return_integer() {
-        let asm_name = "tmp_000_0";
+        let asm_name = "tmp_001_0";
         let input = 1.to_string();
         test_xxx_do(input.as_str(), input.as_str(), asm_name);
     }
 
     #[test]
     fn test_001_1_return_integer() {
-        let asm_name = "tmp_000_1";
+        let asm_name = "tmp_001_1";
         let input = 123.to_string();
         test_xxx_do(input.as_str(), input.as_str(), asm_name);
     }
 
     #[test]
     fn test_002_0_plus_and_minus() {
-        let asm_name = "tmp_001_0";
+        let asm_name = "tmp_002_0";
         let input = "1-2+3";
         let expect = 1 - 2 + 3;
         test_xxx_do(input, expect.to_string().as_str(), asm_name);
@@ -147,9 +150,17 @@ mod test {
 
     #[test]
     fn test_002_1_plus_and_minus() {
-        let asm_name = "tmp_001_0";
+        let asm_name = "tmp_002_1";
         let input = "112-22+33";
         let expect = 112 - 22 + 33;
+        test_xxx_do(input, expect.to_string().as_str(), asm_name);
+    }
+    
+    #[test]
+    fn test_003_0_space_characters() {
+        let asm_name = "tmp_003_0";
+        let input = " 12 + 34 - 5 ";
+        let expect = 12 + 34 - 5;
         test_xxx_do(input, expect.to_string().as_str(), asm_name);
     }
 }
