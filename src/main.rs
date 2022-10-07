@@ -1,3 +1,4 @@
+use core::slice::IterMut;
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{Enumerate, Peekable};
@@ -11,6 +12,28 @@ struct Args {
     #[clap(short, long, value_parser)]
     expression: String,
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum TokenKind {
+    Ignore,
+    Punck,
+    Num,
+    // Eof,
+}
+
+#[derive(Debug)]
+struct Token {
+    kind: TokenKind,
+    value: String,
+}
+
+// #[derive(Debug)]
+// struct Ast {
+//     prev: usize,
+//     curr: usize,
+//     next: usize,
+//     value: String,
+// }
 
 fn iterchar2str(
     current_char: char,
@@ -52,6 +75,98 @@ fn iterchar2str(
     return Ok(num.trim_start().to_string());
 }
 
+fn tokenize(strings: &str) -> Vec<Token> {
+    let count = strings.len() - 1;
+    let mut iter = strings.chars().enumerate().peekable();
+
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut token_kind = TokenKind::Ignore;
+    let mut token_kind_old = TokenKind::Ignore;
+    let mut token_value = String::new();
+
+    while let Some((index, ch)) = iter.peek() {
+        match *ch {
+            '0'..='9' => {
+                token_kind = TokenKind::Num;
+            }
+            _ => match ch {
+                '+' | '-' | '*' | '/' | '(' | ')' => {
+                    token_kind = TokenKind::Punck;
+                }
+                _ => token_kind = TokenKind::Ignore,
+            },
+        }
+
+        if token_kind_old != token_kind || *index == count {
+            let token = Token {
+                kind: token_kind_old,
+                value: token_value.clone(),
+            };
+            if !token_value.is_empty() {
+                tokens.push(token);
+            }
+            token_kind_old = token_kind;
+            token_value.clear();
+        }
+
+        if token_kind != TokenKind::Ignore {
+            token_value.push(*ch);
+        }
+        iter.next();
+    }
+
+    return tokens;
+}
+
+// // expr = mul ("+" mul | "-" mul)*
+// // mul = primary ("*" primary | "/" primary)*
+// // primary = "(" expr ")" | num
+// fn expr(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
+//     mul(tokens, asts);
+//     let value = tokens.next();
+//     let ast = Ast {
+//         prev: 1,
+//         curr: 1,
+//         next: 2,
+//     };
+//     asts.push(ast);
+//     println!("expr -- {:?} {:?}", tokens, asts);
+// }
+
+// fn mul(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
+//     primary(tokens, asts);
+//     let ast = Ast {
+//         prev: 2,
+//         curr: 1,
+//         next: 2,
+//     };
+//     asts.push(ast);
+//     println!("mul -- {:?} {:?}", tokens.next(), asts);
+// }
+
+// fn primary(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
+//     let token = tokens.next();
+//     let token = match token {
+//         Some(t) => t,
+//         None => return,
+//     };
+
+//     match token.value.as_str() {
+//         "(" => {
+//             expr(tokens, asts);
+//         }
+//         _ => {}
+//     }
+
+//     let ast = Ast {
+//         prev: 3,
+//         curr: 1,
+//         next: 2,
+//     };
+//     asts.push(ast);
+//     println!("primary -- {:?} {:?}", tokens, asts);
+// }
+
 fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let str1 = "  .global main\n";
     let str2 = "main:\n";
@@ -71,6 +186,13 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
 
     // 这里我们将算式分解为 num (op num) (op num)...的形式
     let mut iter = args.expression.chars().enumerate().peekable();
+
+    // let mut tokens = tokenize(&args.expression);
+    // println!("tokens={:?}", tokens);
+    // let mut ast: Vec<Ast> = Vec::new();
+    // let mut aiter = tokens.iter_mut();
+    // expr(&mut aiter, &mut ast);
+
     while let Some((_, ch)) = iter.next() {
         match ch {
             // 为num则传入a0
@@ -209,13 +331,19 @@ mod test {
     fn test_004_0_space_characters() {
         let asm_name = "tmp_004_0";
         let input = "1+s";
-        assert_eq!(test_xxx_do(input, asm_name), Err("1+s\n  ^ invalid token".to_string()));
+        assert_eq!(
+            test_xxx_do(input, asm_name),
+            Err("1+s\n  ^ invalid token".to_string())
+        );
     }
 
     #[test]
     fn test_004_1_space_characters() {
         let asm_name = "tmp_004_1";
         let input = "1++1";
-        assert_eq!(test_xxx_do(input, asm_name), Err("1++1\n  ^ expect a number".to_string()));
+        assert_eq!(
+            test_xxx_do(input, asm_name),
+            Err("1++1\n  ^ expect a number".to_string())
+        );
     }
 }
