@@ -1,10 +1,53 @@
-use core::slice::IterMut;
+use core::slice::Iter;
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{Enumerate, Peekable};
 use std::str::Chars;
 
 use clap::Parser;
+
+use std::fmt::Debug;
+
+#[derive(Debug)]
+pub struct BinaryTree<T> {
+    head: Link<T>,
+}
+
+type Link<T> = Option<Box<Node<T>>>;
+
+#[derive(Debug)]
+struct Node<T> {
+    key: T,
+    left: Link<T>,
+    right: Link<T>,
+}
+
+impl<T> BinaryTree<T> {
+    pub fn new(key: T) -> Self {
+        let node = Box::new(Node {
+            key,
+            left: None,
+            right: None,
+        });
+        let mut bt = BinaryTree { head: None };
+        bt.head = Some(node);
+        return bt;
+    }
+
+    pub fn to_left(&mut self, new_root_key: T, right: &mut Option<BinaryTree<T>>) {
+        let mut new_binary = Box::new(Node {
+            key: new_root_key,
+            left: self.head.take(),
+            right: None,
+        });
+
+        if let Some(r) = right {
+            new_binary.right = r.head.take();
+        }
+
+        self.head = Some(new_binary);
+    }
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -21,19 +64,26 @@ enum TokenKind {
     // Eof,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Token {
     kind: TokenKind,
     value: String,
 }
 
-// #[derive(Debug)]
-// struct Ast {
-//     prev: usize,
-//     curr: usize,
-//     next: usize,
-//     value: String,
-// }
+#[derive(Debug)]
+enum NodeKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Num,
+}
+
+#[derive(Debug)]
+struct AstNode {
+    kind: NodeKind,
+    value: String,
+}
 
 fn iterchar2str(
     current_char: char,
@@ -118,54 +168,129 @@ fn tokenize(strings: &str) -> Vec<Token> {
     return tokens;
 }
 
-// // expr = mul ("+" mul | "-" mul)*
-// // mul = primary ("*" primary | "/" primary)*
-// // primary = "(" expr ")" | num
-// fn expr(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
-//     mul(tokens, asts);
-//     let value = tokens.next();
-//     let ast = Ast {
-//         prev: 1,
-//         curr: 1,
-//         next: 2,
-//     };
-//     asts.push(ast);
-//     println!("expr -- {:?} {:?}", tokens, asts);
-// }
+// expr = mul ("+" mul | "-" mul)*
+// mul = primary ("*" primary | "/" primary)*
+// primary = "(" expr ")" | num
+fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
+    let mut node = match mul(tokens) {
+        Some(node) => node,
+        None => return None,
+    };
 
-// fn mul(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
-//     primary(tokens, asts);
-//     let ast = Ast {
-//         prev: 2,
-//         curr: 1,
-//         next: 2,
-//     };
-//     asts.push(ast);
-//     println!("mul -- {:?} {:?}", tokens.next(), asts);
-// }
+    loop {
+        let token = match tokens.peek() {
+            Some(t) => t.clone().clone(),
+            None => return Some(node),
+        };
+        // println!("-- expr {:?}", token);
 
-// fn primary(tokens: &mut IterMut<Token>, asts: &mut Vec<Ast>) {
-//     let token = tokens.next();
-//     let token = match token {
-//         Some(t) => t,
-//         None => return,
-//     };
+        match token.value.as_str() {
+            "+" => {
+                tokens.next();
+                // println!("expr {:?} == {:?}", tokens, token);
+                node.to_left(
+                    AstNode {
+                        kind: NodeKind::Add,
+                        value: token.value,
+                    },
+                    &mut mul(tokens),
+                );
+                continue;
+            }
+            "-" => {
+                tokens.next();
+                // println!("expr {:?} == {:?}", tokens, token);
+                node.to_left(
+                    AstNode {
+                        kind: NodeKind::Sub,
+                        value: token.value,
+                    },
+                    &mut mul(tokens),
+                );
+                continue;
+            }
+            _ => {
+                return Some(node);
+            }
+        }
+    }
+}
 
-//     match token.value.as_str() {
-//         "(" => {
-//             expr(tokens, asts);
-//         }
-//         _ => {}
-//     }
+fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
+    let mut node = match primary(tokens) {
+        Some(node) => node,
+        None => return None,
+    };
 
-//     let ast = Ast {
-//         prev: 3,
-//         curr: 1,
-//         next: 2,
-//     };
-//     asts.push(ast);
-//     println!("primary -- {:?} {:?}", tokens, asts);
-// }
+    loop {
+        let token = match tokens.peek() {
+            Some(t) => t.clone().clone(),
+            None => return Some(node),
+        };
+        // println!("-- mul {:?}", token);
+
+        match token.value.as_str() {
+            "*" => {
+                tokens.next();
+                node.to_left(
+                    AstNode {
+                        kind: NodeKind::Mul,
+                        value: token.value,
+                    },
+                    &mut primary(tokens),
+                );
+                continue;
+            }
+            "/" => {
+                tokens.next();
+                node.to_left(
+                    AstNode {
+                        kind: NodeKind::Div,
+                        value: token.value,
+                    },
+                    &mut primary(tokens),
+                );
+                continue;
+            }
+            _ => {
+                return Some(node);
+            }
+        }
+    }
+}
+
+fn primary(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
+    let token = match tokens.next() {
+        Some(t) => t,
+        None => return None,
+    };
+
+    match token.kind {
+        TokenKind::Punck => {
+            // println!("primary Punck {:?} == {:?}", tokens, token);
+            // match token.value.as_str() {
+            //     "(" => {
+            //         // expr(tokens, asts);
+            //     }
+            //     _ => {}
+            // }
+        }
+        TokenKind::Num => {
+            // println!("primary Num {:?} == {:?}", tokens, token);
+            // 新建一个节点
+            return Some(BinaryTree::new(AstNode {
+                kind: NodeKind::Num,
+                value: token.value.clone(),
+            }));
+        }
+        TokenKind::Ignore => {
+            // 正常不会有这个元素
+            // error
+        }
+    }
+
+    return None;
+}
 
 fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let str1 = "  .global main\n";
@@ -187,11 +312,11 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     // 这里我们将算式分解为 num (op num) (op num)...的形式
     let mut iter = args.expression.chars().enumerate().peekable();
 
-    // let mut tokens = tokenize(&args.expression);
-    // println!("tokens={:?}", tokens);
-    // let mut ast: Vec<Ast> = Vec::new();
-    // let mut aiter = tokens.iter_mut();
-    // expr(&mut aiter, &mut ast);
+    let tokens = tokenize(&args.expression);
+    println!("tokens={:?}", tokens);
+    let mut aiter = tokens.iter().peekable();
+    let ast = expr(&mut aiter);
+    println!("{:?}", ast);
 
     while let Some((_, ch)) = iter.next() {
         match ch {
@@ -256,6 +381,15 @@ mod test {
     fn test_run_clean() {
         use std::process::Command;
         Command::new("sh").arg("clean.sh").output().unwrap();
+    }
+
+    #[test]
+    fn test_binary_tree() {
+        // let mut bt = BinaryTree::new("1");
+        // bt.to_left("+", &mut BinaryTree::new("2"));
+        // bt.to_left("*", &mut BinaryTree { head: None });
+
+        // println!("{:?}", bt);
     }
 
     fn test_xxx_do(input: &str, asm_name: &str) -> Result<String, String> {
