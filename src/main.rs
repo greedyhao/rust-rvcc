@@ -5,7 +5,7 @@ use std::iter::{Enumerate, Peekable};
 use std::str::Chars;
 
 use clap::Parser;
-
+use log::{trace, info};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -135,6 +135,7 @@ fn tokenize(strings: &str) -> Vec<Token> {
     let mut token_value = String::new();
 
     while let Some((index, ch)) = iter.peek() {
+        trace!("tokenize index={} ch={}", index, ch);
         match *ch {
             '0'..='9' => {
                 token_kind = TokenKind::Num;
@@ -147,12 +148,18 @@ fn tokenize(strings: &str) -> Vec<Token> {
             },
         }
 
-        if token_kind_old != token_kind || *index == count {
+        trace!(
+            "tokenize token_kind={:?} token_kind_old={:?}",
+            token_kind, token_kind_old
+        );
+
+        if token_kind_old != token_kind {
             let token = Token {
                 kind: token_kind_old,
                 value: token_value.clone(),
             };
             if !token_value.is_empty() {
+                trace!("tokenize tokens.push:{:?}", token);
                 tokens.push(token);
             }
             token_kind_old = token_kind;
@@ -160,7 +167,16 @@ fn tokenize(strings: &str) -> Vec<Token> {
         }
 
         if token_kind != TokenKind::Ignore {
+            trace!("tokenize token_value.push:{}", ch);
             token_value.push(*ch);
+        }
+
+        // 如果最后一个是数字
+        if *index == count && token_kind == TokenKind::Num {
+            tokens.push(Token {
+                kind: token_kind,
+                value: token_value.clone(),
+            });
         }
         iter.next();
     }
@@ -182,12 +198,12 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
             Some(t) => t.clone().clone(),
             None => return Some(node),
         };
-        // println!("-- expr {:?}", token);
+        trace!("-- expr {:?}", token);
 
         match token.value.as_str() {
             "+" => {
                 tokens.next();
-                // println!("expr {:?} == {:?}", tokens, token);
+                trace!("expr {:?} == {:?}", tokens, token);
                 node.to_left(
                     AstNode {
                         kind: NodeKind::Add,
@@ -199,7 +215,7 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
             }
             "-" => {
                 tokens.next();
-                // println!("expr {:?} == {:?}", tokens, token);
+                trace!("expr {:?} == {:?}", tokens, token);
                 node.to_left(
                     AstNode {
                         kind: NodeKind::Sub,
@@ -227,7 +243,7 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
             Some(t) => t.clone().clone(),
             None => return Some(node),
         };
-        // println!("-- mul {:?}", token);
+        trace!("-- mul {:?}", token);
 
         match token.value.as_str() {
             "*" => {
@@ -267,7 +283,7 @@ fn primary(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
 
     match token.kind {
         TokenKind::Punck => {
-            // println!("primary Punck {:?} == {:?}", tokens, token);
+            // trace!("primary Punck {:?} == {:?}", tokens, token);
             // match token.value.as_str() {
             //     "(" => {
             //         // expr(tokens, asts);
@@ -276,7 +292,7 @@ fn primary(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
             // }
         }
         TokenKind::Num => {
-            // println!("primary Num {:?} == {:?}", tokens, token);
+            // trace!("primary Num {:?} == {:?}", tokens, token);
             // 新建一个节点
             return Some(BinaryTree::new(AstNode {
                 kind: NodeKind::Num,
@@ -313,10 +329,10 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let mut iter = args.expression.chars().enumerate().peekable();
 
     let tokens = tokenize(&args.expression);
-    println!("tokens={:?}", tokens);
+    info!("tokens={:?}", tokens);
     let mut aiter = tokens.iter().peekable();
     let ast = expr(&mut aiter);
-    println!("{:?}", ast);
+    info!("{:?}", ast);
 
     while let Some((_, ch)) = iter.next() {
         match ch {
@@ -368,6 +384,7 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
 }
 
 fn main() {
+    env_logger::init();
     let args = Args::parse();
     main_body(args, "tmp.s").unwrap();
 }
