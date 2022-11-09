@@ -9,56 +9,26 @@ use core::mem;
 use log::{info, trace};
 use std::fmt::Debug;
 
-#[derive(Debug)]
-pub struct BinaryTree<T> {
-    key: T,
-    left: Link<T>,
-    right: Link<T>,
-}
-
-type Link<T> = Option<Box<BinaryTree<T>>>;
-
-trait BinaryTreeIO<T> {
-    fn new_binary_without_right(root: T, left: &mut BinaryTree<T>) -> BinaryTree<T>;
-}
+mod binary_tree;
+use binary_tree::*;
 
 impl BinaryTreeIO<AstNode> for BinaryTree<AstNode> {
-    fn new_binary_without_right(root: AstNode, left: &mut BinaryTree<AstNode>) -> BinaryTree<AstNode> {
+    fn new_binary_without_right(
+        root: AstNode,
+        left: &mut BinaryTree<AstNode>,
+    ) -> BinaryTree<AstNode> {
         let mut bt = BinaryTree::new(root);
-        bt.left = Some(Box::new(mem::take(left)));
-        bt.right = None;
+        bt.set_left(Some(Box::new(mem::take(left))));
         return bt;
     }
 }
 
 impl Default for BinaryTree<AstNode> {
     fn default() -> Self {
-        BinaryTree {
-            key: AstNode {
-                kind: NodeKind::Num,
-                value: String::new(),
-            },
-            left: None,
-            right: None,
-        }
-    }
-}
-
-impl<T> BinaryTree<T> {
-    pub fn new(key: T) -> Self {
-        BinaryTree {
-            key,
-            left: None,
-            right: None,
-        }
-    }
-
-    pub fn get_right(&self) -> Option<&BinaryTree<T>> {
-        self.right.as_deref()
-    }
-
-    pub fn get_left(&self) -> Option<&BinaryTree<T>> {
-        self.left.as_deref()
+        BinaryTree::new(AstNode {
+            kind: NodeKind::Num,
+            value: String::new(),
+        })
     }
 }
 
@@ -100,7 +70,10 @@ pub struct AstNode {
 
 impl Default for AstNode {
     fn default() -> Self {
-        AstNode { kind: NodeKind::Num, value: String::new() }
+        AstNode {
+            kind: NodeKind::Num,
+            value: String::new(),
+        }
     }
 }
 
@@ -235,7 +208,7 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
 
                 let right = mul(tokens);
                 if right.is_some() {
-                    bt.right = Some(Box::new(mem::take(&mut right.unwrap())));
+                    bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
                 node = bt;
                 continue;
@@ -254,7 +227,7 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
 
                 let right = mul(tokens);
                 if right.is_some() {
-                    bt.right = Some(Box::new(mem::take(&mut right.unwrap())));
+                    bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
                 node = bt;
                 continue;
@@ -293,7 +266,7 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
 
                 let right = primary(tokens);
                 if right.is_some() {
-                    bt.right = Some(Box::new(mem::take(&mut right.unwrap())));
+                    bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
                 node = bt;
                 continue;
@@ -311,7 +284,7 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
 
                 let right = primary(tokens);
                 if right.is_some() {
-                    bt.right = Some(Box::new(mem::take(&mut right.unwrap())));
+                    bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
                 node = bt;
                 continue;
@@ -450,9 +423,21 @@ mod test {
 
     #[test]
     fn test_bt() {
-        let mut bt1 = BinaryTree::new(AstNode { kind: NodeKind::Num, value: "1".to_string() });
-        bt1.left = Some(Box::new(BinaryTree::new(AstNode { kind: NodeKind::Num, value: "0".to_string() })));
-        let mut bt2 = BinaryTree::new_binary_without_right(AstNode { kind: NodeKind::Add, value: String::new()}, &mut bt1);
+        let mut bt1 = BinaryTree::new(AstNode {
+            kind: NodeKind::Num,
+            value: "1".to_string(),
+        });
+        bt1.set_left(Some(Box::new(BinaryTree::new(AstNode {
+            kind: NodeKind::Num,
+            value: "0".to_string(),
+        }))));
+        let bt2 = BinaryTree::new_binary_without_right(
+            AstNode {
+                kind: NodeKind::Add,
+                value: String::new(),
+            },
+            &mut bt1,
+        );
 
         let left = bt2.get_left();
         let lleft = left.unwrap().get_left();
