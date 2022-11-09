@@ -52,6 +52,14 @@ impl<T> BinaryTree<T> {
             right: None,
         }
     }
+
+    pub fn get_right(&self) -> Option<&BinaryTree<T>> {
+        self.right.as_deref()
+    }
+
+    pub fn get_left(&self) -> Option<&BinaryTree<T>> {
+        self.left.as_deref()
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -88,6 +96,12 @@ enum NodeKind {
 pub struct AstNode {
     kind: NodeKind,
     value: String,
+}
+
+impl Default for AstNode {
+    fn default() -> Self {
+        AstNode { kind: NodeKind::Num, value: String::new() }
+    }
 }
 
 fn iterchar2str(
@@ -432,6 +446,19 @@ mod test {
     fn test_run_clean() {
         use std::process::Command;
         Command::new("sh").arg("clean.sh").output().unwrap();
+    }
+
+    #[test]
+    fn test_bt() {
+        let mut bt1 = BinaryTree::new(AstNode { kind: NodeKind::Num, value: "1".to_string() });
+        bt1.left = Some(Box::new(BinaryTree::new(AstNode { kind: NodeKind::Num, value: "0".to_string() })));
+        let mut bt2 = BinaryTree::new_binary_without_right(AstNode { kind: NodeKind::Add, value: String::new()}, &mut bt1);
+
+        let left = bt2.get_left();
+        let lleft = left.unwrap().get_left();
+
+        println!("{:?}", left);
+        println!("{:?}", lleft);
     }
 
     fn test_xxx_do(input: &str, asm_name: &str) -> Result<String, String> {
