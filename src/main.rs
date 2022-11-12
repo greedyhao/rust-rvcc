@@ -1,8 +1,7 @@
 use core::slice::Iter;
 use std::fs::File;
 use std::io::prelude::*;
-use std::iter::{Enumerate, Peekable};
-use std::str::Chars;
+use std::iter::Peekable;
 
 use clap::Parser;
 use core::mem;
@@ -53,7 +52,7 @@ struct Token {
     value: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum NodeKind {
     Add,
     Sub,
@@ -75,46 +74,6 @@ impl Default for AstNode {
             value: String::new(),
         }
     }
-}
-
-fn iterchar2str(
-    current_char: char,
-    iter: &mut Peekable<Enumerate<Chars>>,
-) -> Result<String, (String, usize, char)> {
-    let mut num = current_char.to_string();
-    let mut check_operator = false;
-
-    if !(current_char >= '0' && current_char <= '9') {
-        num = String::new(); // 当前字符非数字，清空
-        check_operator = true;
-    }
-
-    while let Some(&(index, next_ch)) = iter.peek() {
-        match next_ch {
-            '0'..='9' => {
-                num.push(iter.next().unwrap().1);
-                check_operator = false;
-            }
-            ' ' => {
-                iter.next().unwrap();
-            }
-            _ => {
-                if check_operator {
-                    match next_ch {
-                        '+' | '-' | '*' | '/' => {
-                            return Err(("expect a number".to_string(), index, next_ch));
-                        }
-                        'a'..='z' | 'A'..='Z' => {
-                            return Err(("invalid token".to_string(), index, next_ch));
-                        }
-                        _ => {}
-                    }
-                }
-                break;
-            }
-        }
-    }
-    return Ok(num.trim_start().to_string());
 }
 
 fn tokenize(strings: &str) -> Vec<Token> {
@@ -329,25 +288,49 @@ fn primary(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
     return None;
 }
 
+fn push(asm: &mut String, depth: &mut isize) {
+    asm.push_str("  addi sp, sp, -8\n");
+    asm.push_str("  sd a0, 0(sp)\n");
+    *depth += 1;
+}
+
+fn pop(asm: &mut String, depth: &mut isize, reg: &str) {
+    asm.push_str(&format!("  ld {}, 0(sp)\n", reg));
+    asm.push_str("  addi sp, sp, 8\n");
+    *depth -= 1;
+}
+
+fn get_expr(ast: Option<&BinaryTree<AstNode>>, asm: &mut String, depth: &mut isize) {
+    trace!("get_expr ast {:?}", ast);
+    let root = ast.as_ref().unwrap().get_root();
+    if root.kind == NodeKind::Num {
+        asm.push_str(&format!("  li a0, {}\n", root.value));
+        trace!("get_expr num {:?}", root.value);
+        return;
+    }
+
+    get_expr(ast.as_ref().unwrap().get_right(), asm, depth);
+    push(asm, depth);
+    get_expr(ast.as_ref().unwrap().get_left(), asm, depth);
+    pop(asm, depth, "a1");
+
+    trace!("get_expr {:?} {:?}", root.kind, root.value);
+    match root.kind {
+        NodeKind::Add => asm.push_str("  add a0, a0, a1\n"),
+        NodeKind::Sub => asm.push_str("  sub a0, a0, a1\n"),
+        NodeKind::Mul => asm.push_str("  mul a0, a0, a1\n"),
+        NodeKind::Div => asm.push_str("  div a0, a0, a1\n"),
+        _ => {
+            // error
+        }
+    }
+}
+
 fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let str1 = "  .global main\n";
     let str2 = "main:\n";
     let mut str3 = String::new();
     let str4 = "  ret\n";
-
-    let mut str3_format = "";
-    let str3_num = "  li a0, ";
-
-    // addi rd, rs1, imm 表示 rd = rs1 + imm
-    // addi中imm为有符号立即数，所以加法表示为 rd = rs1 + imm
-    let str3_plus = "  addi a0, a0, ";
-
-    // addi rd, rs1, imm 表示 rd = rs1 + imm
-    // addi中imm为有符号立即数，所以减法表示为 rd = rs1 + (-imm)
-    let str3_minus = "  addi a0, a0, -";
-
-    // 这里我们将算式分解为 num (op num) (op num)...的形式
-    let mut iter = args.expression.chars().enumerate().peekable();
 
     let tokens = tokenize(&args.expression);
     info!("tokens={:?}", tokens);
@@ -355,46 +338,8 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let ast = expr(&mut aiter);
     info!("{:?}", ast);
 
-    while let Some((_, ch)) = iter.next() {
-        match ch {
-            // 为num则传入a0
-            '0'..='9' => {
-                str3_format = str3_num;
-            }
-
-            // 为+则读取下一个num做加法
-            '+' => {
-                str3_format = str3_plus;
-            }
-
-            // 为-则读取下一个num做减法
-            '-' => {
-                str3_format = str3_minus;
-            }
-
-            // 如果是空格就忽略掉
-            ' ' => {}
-
-            _ => {
-                return Err("undefined".to_string());
-            }
-        }
-
-        if ch != ' ' {
-            let res = iterchar2str(ch, &mut iter);
-            match res {
-                Ok(num) => str3 += &format!("{}{}\n", str3_format, num),
-                Err((code, index, _)) => {
-                    // 错误打印信息
-                    let mut info = String::new();
-                    info += &format!("{}\n", args.expression);
-                    info += &format!("{: <1$}", "", index);
-                    info += &format!("^ {}", code);
-                    return Err(info);
-                }
-            }
-        }
-    }
+    let mut depth = 0;
+    get_expr(ast.as_ref(), &mut str3, &mut depth);
 
     let str = str1.to_string() + str2 + &str3 + str4;
 

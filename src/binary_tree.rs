@@ -22,6 +22,11 @@ impl<T> BinaryTree<T> {
     }
 
     #[allow(dead_code)]
+    pub fn get_root(&self) -> &T {
+        &self.key
+    }
+
+    #[allow(dead_code)]
     pub fn get_right(&self) -> Option<&BinaryTree<T>> {
         self.right.as_deref()
     }
