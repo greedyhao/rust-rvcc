@@ -102,7 +102,7 @@ fn tokenize(strings: &str) -> Vec<Token> {
         );
 
         if !token_value.is_empty() {
-            if token_kind_old != token_kind {
+            if token_kind_old != token_kind || token_kind != TokenKind::Num {
                 let token = Token {
                     kind: token_kind_old,
                     value: token_value.clone(),
@@ -271,7 +271,7 @@ fn primary(tokens: &mut Peekable<Iter<Token>>) -> Result<Option<BinaryTree<AstNo
                     // expr(tokens, asts);
                     return Ok(None);
                 }
-                _ => {}
+                _ => return Err(format!("{: <1$}", "", token.offset) + &format!("^ expect a number")),
             }
         }
         TokenKind::Num => {
@@ -285,10 +285,9 @@ fn primary(tokens: &mut Peekable<Iter<Token>>) -> Result<Option<BinaryTree<AstNo
         TokenKind::Other => {
             // 正常不会有这个元素
             // error
+            return Err(format!("{: <1$}", "", token.offset) + &format!("^ invalid token"));
         }
     }
-
-    return Err("expected an expression".to_string());
 }
 
 fn push(asm: &mut String, depth: &mut isize) {
@@ -338,7 +337,10 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let tokens = tokenize(&args.expression);
     info!("tokens={:?}", tokens);
     let mut aiter = tokens.iter().peekable();
-    let ast = expr(&mut aiter).unwrap();
+    let ast = match expr(&mut aiter) {
+        Ok(t) => t,
+        Err(e) => return Err(args.expression + "\n" + &e),
+    };
     info!("{:?}", ast);
 
     let mut depth = 0;
@@ -370,6 +372,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_bt() {
         let mut bt1 = BinaryTree::new(AstNode {
             kind: NodeKind::Num,
