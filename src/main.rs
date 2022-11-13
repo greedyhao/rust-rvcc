@@ -40,7 +40,7 @@ struct Args {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum TokenKind {
-    Ignore,
+    Other,
     Punck,
     Num,
     // Eof,
@@ -50,6 +50,7 @@ enum TokenKind {
 struct Token {
     kind: TokenKind,
     value: String,
+    offset: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -82,21 +83,16 @@ fn tokenize(strings: &str) -> Vec<Token> {
 
     let mut tokens: Vec<Token> = Vec::new();
     let mut token_kind;
-    let mut token_kind_old = TokenKind::Ignore;
+    let mut token_kind_old = TokenKind::Other;
     let mut token_value = String::new();
+    let mut offset = 0;
 
     while let Some((index, ch)) = iter.peek() {
         trace!("tokenize index={} ch={}", index, ch);
         match *ch {
-            '0'..='9' => {
-                token_kind = TokenKind::Num;
-            }
-            _ => match ch {
-                '+' | '-' | '*' | '/' | '(' | ')' => {
-                    token_kind = TokenKind::Punck;
-                }
-                _ => token_kind = TokenKind::Ignore,
-            },
+            '0'..='9' => token_kind = TokenKind::Num,
+            '+' | '-' | '*' | '/' | '(' | ')' => token_kind = TokenKind::Punck,
+            _ => token_kind = TokenKind::Other,
         }
 
         trace!(
@@ -105,30 +101,36 @@ fn tokenize(strings: &str) -> Vec<Token> {
             token_kind_old
         );
 
-        if token_kind_old != token_kind {
-            let token = Token {
-                kind: token_kind_old,
-                value: token_value.clone(),
-            };
-            if !token_value.is_empty() {
+        if !token_value.is_empty() {
+            if token_kind_old != token_kind {
+                let token = Token {
+                    kind: token_kind_old,
+                    value: token_value.clone(),
+                    offset,
+                };
                 trace!("tokenize tokens.push:{:?}", token);
                 tokens.push(token);
+                token_value.clear();
             }
-            token_kind_old = token_kind;
-            token_value.clear();
         }
 
-        if token_kind != TokenKind::Ignore {
-            trace!("tokenize token_value.push:{}", ch);
+        if *ch > ' ' && *ch < 0xff as char {
             token_value.push(*ch);
         }
 
-        // 如果最后一个是数字
-        if *index == count && token_kind == TokenKind::Num {
-            tokens.push(Token {
-                kind: token_kind,
+        offset = *index;
+        token_kind_old = token_kind;
+        trace!("tokenize token_value:{:?}", token_value);
+
+        // 如果是最后一个
+        if *index == count {
+            let token = Token {
+                kind: token_kind_old,
                 value: token_value.clone(),
-            });
+                offset,
+            };
+            trace!("tokenize tokens.push:{:?}", token);
+            tokens.push(token);
         }
         iter.next();
     }
@@ -139,16 +141,16 @@ fn tokenize(strings: &str) -> Vec<Token> {
 // expr = mul ("+" mul | "-" mul)*
 // mul = primary ("*" primary | "/" primary)*
 // primary = "(" expr ")" | num
-fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
-    let mut node = match mul(tokens) {
+fn expr(tokens: &mut Peekable<Iter<Token>>) -> Result<Option<BinaryTree<AstNode>>, String> {
+    let mut node = match mul(tokens)? {
         Some(node) => node,
-        None => return None,
+        None => return Ok(None),
     };
 
     loop {
         let token = match tokens.peek() {
             Some(t) => t.clone().clone(),
-            None => return Some(node),
+            None => return Ok(Some(node)),
         };
         trace!("-- expr {:?}", token);
 
@@ -165,7 +167,7 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                     &mut node,
                 );
 
-                let right = mul(tokens);
+                let right = mul(tokens)?;
                 if right.is_some() {
                     bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
@@ -184,7 +186,7 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                     &mut node,
                 );
 
-                let right = mul(tokens);
+                let right = mul(tokens)?;
                 if right.is_some() {
                     bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
@@ -192,22 +194,22 @@ fn expr(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                 continue;
             }
             _ => {
-                return Some(node);
+                return Ok(Some(node));
             }
         }
     }
 }
 
-fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
-    let mut node = match primary(tokens) {
+fn mul(tokens: &mut Peekable<Iter<Token>>) -> Result<Option<BinaryTree<AstNode>>, String> {
+    let mut node = match primary(tokens)? {
         Some(node) => node,
-        None => return None,
+        None => return Ok(None),
     };
 
     loop {
         let token = match tokens.peek() {
             Some(t) => t.clone().clone(),
-            None => return Some(node),
+            None => return Ok(Some(node)),
         };
         trace!("-- mul {:?}", token);
 
@@ -223,7 +225,7 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                     &mut node,
                 );
 
-                let right = primary(tokens);
+                let right = primary(tokens)?;
                 if right.is_some() {
                     bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
@@ -241,7 +243,7 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                     &mut node,
                 );
 
-                let right = primary(tokens);
+                let right = primary(tokens)?;
                 if right.is_some() {
                     bt.set_right(Some(Box::new(mem::take(&mut right.unwrap()))));
                 }
@@ -249,43 +251,44 @@ fn mul(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
                 continue;
             }
             _ => {
-                return Some(node);
+                return Ok(Some(node));
             }
         }
     }
 }
 
-fn primary(tokens: &mut Peekable<Iter<Token>>) -> Option<BinaryTree<AstNode>> {
+fn primary(tokens: &mut Peekable<Iter<Token>>) -> Result<Option<BinaryTree<AstNode>>, String> {
     let token = match tokens.next() {
         Some(t) => t,
-        None => return None,
+        None => return Ok(None),
     };
 
     match token.kind {
         TokenKind::Punck => {
             trace!("primary Punck {:?} == {:?}", tokens, token);
-            // match token.value.as_str() {
-            //     "(" => {
-            //         // expr(tokens, asts);
-            //     }
-            //     _ => {}
-            // }
+            match token.value.as_str() {
+                "(" => {
+                    // expr(tokens, asts);
+                    return Ok(None);
+                }
+                _ => {}
+            }
         }
         TokenKind::Num => {
             trace!("primary Num {:?} == {:?}", tokens, token);
             // 新建一个节点
-            return Some(BinaryTree::new(AstNode {
+            return Ok(Some(BinaryTree::new(AstNode {
                 kind: NodeKind::Num,
                 value: token.value.clone(),
-            }));
+            })));
         }
-        TokenKind::Ignore => {
+        TokenKind::Other => {
             // 正常不会有这个元素
             // error
         }
     }
 
-    return None;
+    return Err("expected an expression".to_string());
 }
 
 fn push(asm: &mut String, depth: &mut isize) {
@@ -335,7 +338,7 @@ fn main_body(args: Args, asm_name: &str) -> Result<i32, String> {
     let tokens = tokenize(&args.expression);
     info!("tokens={:?}", tokens);
     let mut aiter = tokens.iter().peekable();
-    let ast = expr(&mut aiter);
+    let ast = expr(&mut aiter).unwrap();
     info!("{:?}", ast);
 
     let mut depth = 0;
